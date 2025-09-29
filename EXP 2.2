@@ -1,0 +1,185 @@
+import java.io.*;
+import java.util.*;
+
+class Student implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private int studentID;
+    private String name;
+    private String grade;
+
+    public Student(int studentID, String name, String grade) {
+        this.studentID = studentID;
+        this.name = name;
+        this.grade = grade;
+    }
+
+    @Override
+    public String toString() {
+        return "Student{ID=" + studentID + ", Name='" + name + "', Grade='" + grade + "'}";
+    }
+}
+
+class Employee implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private String name;
+    private String employeeId;
+    private String designation;
+    private double salary;
+
+    public Employee(String name, String employeeId, String designation, double salary) {
+        this.name = name;
+        this.employeeId = employeeId;
+        this.designation = designation;
+        this.salary = salary;
+    }
+
+    @Override
+    public String toString() {
+        return "Employee{Name='" + name + "', ID='" + employeeId + "', Designation='" + designation + "', Salary=" + salary + "}";
+    }
+}
+
+public class NimbusApp {
+    private static final String EMPLOYEE_FILE = "employees.dat";
+    private static final String STUDENT_FILE = "student.ser";
+
+    public static int sumList(List<Integer> numbers) {
+        int sum = 0;
+        for (Integer num : numbers) {
+            sum += num;
+        }
+        return sum;
+    }
+
+    public static Integer parseStringToInteger(String str) {
+        return Integer.parseInt(str);
+    }
+
+    public static void serializeStudent(Student student) throws IOException {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(STUDENT_FILE))) {
+            out.writeObject(student);
+        }
+    }
+
+    public static Student deserializeStudent() throws IOException, ClassNotFoundException {
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(STUDENT_FILE))) {
+            return (Student) in.readObject();
+        }
+    }
+
+    public static void addEmployee(Employee emp) {
+        List<Employee> employees = readEmployees();
+        employees.add(emp);
+        saveEmployees(employees);
+    }
+
+    public static List<Employee> readEmployees() {
+        List<Employee> employees = new ArrayList<>();
+        File file = new File(EMPLOYEE_FILE);
+        if (!file.exists()) return employees;
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            employees = (List<Employee>) ois.readObject();
+        } catch (IOException | ClassNotFoundException ignored) {}
+        return employees;
+    }
+
+    public static void saveEmployees(List<Employee> employees) {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(EMPLOYEE_FILE))) {
+            oos.writeObject(employees);
+        } catch (IOException e) {
+            System.out.println("Error saving employees: " + e.getMessage());
+        }
+    }
+
+    public static void displayEmployees() {
+        List<Employee> employees = readEmployees();
+        if (employees.isEmpty()) {
+            System.out.println("No employees found.");
+            return;
+        }
+        for (Employee e : employees) {
+            System.out.println(e);
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.println("Part A: Sum of Integers Using Autoboxing and Unboxing");
+        List<Integer> numbers = new ArrayList<>();
+        System.out.println("Enter integers as strings (type 'done' to finish):");
+        while (true) {
+            String input = sc.nextLine();
+            if (input.equalsIgnoreCase("done")) break;
+            try {
+                Integer num = parseStringToInteger(input);
+                numbers.add(num);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid integer, try again.");
+            }
+        }
+        System.out.println("Sum of entered integers: " + sumList(numbers));
+
+        System.out.println("\nPart B: Serialization and Deserialization of a Student Object");
+        try {
+            System.out.print("Enter Student ID: ");
+            int id = sc.nextInt();
+            sc.nextLine();
+            System.out.print("Enter Student Name: ");
+            String name = sc.nextLine();
+            System.out.print("Enter Student Grade: ");
+            String grade = sc.nextLine();
+            Student student = new Student(id, name, grade);
+            serializeStudent(student);
+            System.out.println("Student serialized.");
+            Student deserialized = deserializeStudent();
+            System.out.println("Deserialized Student: " + deserialized);
+        } catch (IOException | ClassNotFoundException e) {
+            System.out.println("Error with student serialization: " + e.getMessage());
+        }
+
+        int choice;
+        do {
+            System.out.println("\nPart C: Menu-Based Employee Management System");
+            System.out.println("1. Add an Employee");
+            System.out.println("2. Display All Employees");
+            System.out.println("3. Exit");
+            System.out.print("Choose an option: ");
+            while (!sc.hasNextInt()) {
+                System.out.print("Enter a valid number (1-3): ");
+                sc.next();
+            }
+            choice = sc.nextInt();
+            sc.nextLine();
+            switch (choice) {
+                case 1:
+                    System.out.print("Employee Name: ");
+                    String empName = sc.nextLine();
+                    System.out.print("Employee ID: ");
+                    String empId = sc.nextLine();
+                    System.out.print("Designation: ");
+                    String designation = sc.nextLine();
+                    System.out.print("Salary: ");
+                    while (!sc.hasNextDouble()) {
+                        System.out.print("Enter numeric salary: ");
+                        sc.next();
+                    }
+                    double salary = sc.nextDouble();
+                    sc.nextLine();
+                    addEmployee(new Employee(empName, empId, designation, salary));
+                    System.out.println("Employee added.");
+                    break;
+                case 2:
+                    displayEmployees();
+                    break;
+                case 3:
+                    System.out.println("Exiting application.");
+                    break;
+                default:
+                    System.out.println("Invalid choice.");
+            }
+        } while (choice != 3);
+
+        sc.close();
+    }
+}
