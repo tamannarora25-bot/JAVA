@@ -1,0 +1,255 @@
+// File: CombinedSpringHibernateApp.java
+package com.example.combined;
+
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.cfg.Configuration;
+import org.springframework.context.annotation.*;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.orm.hibernate5.HibernateTransactionManager;
+import org.springframework.orm.hibernate5.LocalSessionFactoryBean;
+import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.persistence.*;
+import javax.sql.DataSource;
+import java.util.List;
+import java.util.Properties;
+
+// ==========================================================
+//  ENTITY CLASSES
+// ==========================================================
+@Entity
+@Table(name = "students")
+class Student {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+    private int age;
+
+    public Student() {}
+    public Student(String name, int age) { this.name = name; this.age = age; }
+
+    public Long getId() { return id; }
+    public String getName() { return name; }
+    public int getAge() { return age; }
+    public void setName(String name) { this.name = name; }
+    public void setAge(int age) { this.age = age; }
+
+    public String toString() {
+        return "Student{id=" + id + ", name='" + name + "', age=" + age + '}';
+    }
+}
+
+@Entity
+@Table(name = "accounts")
+class Account {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String owner;
+    private double balance;
+
+    public Account() {}
+    public Account(String owner, double balance) {
+        this.owner = owner; this.balance = balance;
+    }
+
+    public Long getId() { return id; }
+    public String getOwner() { return owner; }
+    public double getBalance() { return balance; }
+    public void setOwner(String owner) { this.owner = owner; }
+    public void setBalance(double balance) { this.balance = balance; }
+
+    public String toString() {
+        return "Account{id=" + id + ", owner='" + owner + "', balance=" + balance + '}';
+    }
+}
+
+// ==========================================================
+//  DAO LAYER
+// ==========================================================
+@Repository
+class StudentDao {
+    private final SessionFactory sessionFactory;
+    public StudentDao(SessionFactory sessionFactory) { this.sessionFactory = sessionFactory; }
+
+    public void save(Student s) {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction tx = session.beginTransaction();
+            session.save(s);
+            tx.commit();
+        }
+    }
+
+    public List<Student> findAll() {
+        try (Session session = sessionFactory.openSession()) {
+            return session.createQuery("from Student", Student.class).list();
+        }
+    }
+}
+
+@Repository
+class AccountDao {
+    private final SessionFactory sessionFactory;
+    public AccountDao(SessionFactory sessionFactory) { this.sessionFactory = sessionFactory; }
+
+    public void save(Account a) {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction tx = session.beginTransaction();
+            session.save(a);
+            tx.commit();
+        }
+    }
+
+    public List<Account> findAll() {
+        try (Session session = sessionFactory.openSession()) {
+            return session.createQuery("from Account", Account.class).list();
+        }
+    }
+}
+
+// ==========================================================
+//  SERVICE LAYER (Transaction Management)
+// ==========================================================
+@Service
+class BankingService {
+    private final SessionFactory sessionFactory;
+    public BankingService(SessionFactory sessionFactory) { this.sessionFactory = sessionFactory; }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void transfer(Long fromId, Long toId, double amount) {
+        Session session = sessionFactory.getCurrentSession();
+        Account from = session.get(Account.class, fromId);
+        Account to = session.get(Account.class, toId);
+
+        if (from == null || to == null)
+            throw new RuntimeException("Account not found");
+        if (from.getBalance() < amount)
+            throw new RuntimeException("Insufficient balance!");
+
+        from.setBalance(from.getBalance() - amount);
+        to.setBalance(to.getBalance() + amount);
+
+        session.update(from);
+        session.update(to);
+    }
+}
+
+// ==========================================================
+//  SIMPLE SPRING DI EXAMPLE
+// ==========================================================
+class Course {
+    private String name;
+    public Course(String name) { this.name = name; }
+    public String getName() { return name; }
+}
+
+class StudentDI {
+    private Course course;
+    private String name;
+    public StudentDI(Course course) { this.course = course; }
+    public void setName(String name) { this.name = name; }
+    public void showDetails() {
+        System.out.println("Student Name: " + name + " | Course: " + course.getName());
+    }
+}
+
+// ==========================================================
+//  SPRING CONFIGURATION
+// ==========================================================
+@Configuration
+@ComponentScan(basePackages = "com.example.combined")
+@EnableTransactionManagement
+class AppConfig {
+
+    // --- Dependency Injection Beans ---
+    @Bean
+    public Course course() { return new Course("Computer Science"); }
+
+    @Bean
+    public StudentDI studentDI() {
+        StudentDI s = new StudentDI(course());
+        s.setName("Alka");
+        return s;
+    }
+
+    // --- Database + Hibernate Configuration ---
+    @Bean
+    public DataSource dataSource() {
+        DriverManagerDataSource ds = new DriverManagerDataSource();
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        ds.setUrl("jdbc:mysql://localhost:3306/spring_hibernate_demo?useSSL=false&serverTimezone=UTC");
+        ds.setUsername("root");
+        ds.setPassword("password"); // change this
+        return ds;
+    }
+
+    @Bean
+    public LocalSessionFactoryBean sessionFactory() {
+        LocalSessionFactoryBean sf = new LocalSessionFactoryBean();
+        sf.setDataSource(dataSource());
+        sf.setPackagesToScan("com.example.combined");
+        Properties props = new Properties();
+        props.put("hibernate.dialect", "org.hibernate.dialect.MySQL8Dialect");
+        props.put("hibernate.hbm2ddl.auto", "update");
+        props.put("hibernate.show_sql", "true");
+        sf.setHibernateProperties(props);
+        return sf;
+    }
+
+    @Bean
+    public PlatformTransactionManager transactionManager(SessionFactory sessionFactory) {
+        return new HibernateTransactionManager(sessionFactory);
+    }
+}
+
+// ==========================================================
+//  MAIN APP (runs all 3 parts)
+// ==========================================================
+public class CombinedSpringHibernateApp {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(AppConfig.class);
+
+        // --- PART A: Spring Dependency Injection ---
+        System.out.println("\n--- SPRING DI EXAMPLE ---");
+        StudentDI s = ctx.getBean(StudentDI.class);
+        s.showDetails();
+
+        // --- PART B: Hibernate CRUD ---
+        System.out.println("\n--- HIBERNATE CRUD ---");
+        StudentDao studentDao = ctx.getBean(StudentDao.class);
+        studentDao.save(new Student("Rita", 21));
+        studentDao.save(new Student("Raj", 23));
+        studentDao.findAll().forEach(System.out::println);
+
+        // --- PART C: Spring + Hibernate Transaction Management ---
+        System.out.println("\n--- TRANSACTION MANAGEMENT ---");
+        AccountDao accountDao = ctx.getBean(AccountDao.class);
+        BankingService service = ctx.getBean(BankingService.class);
+
+        // create accounts
+        accountDao.save(new Account("Alice", 1000));
+        accountDao.save(new Account("Bob", 500));
+        System.out.println("Before transfer:");
+        accountDao.findAll().forEach(System.out::println);
+
+        try {
+            service.transfer(1L, 2L, 200);
+            System.out.println("Transfer successful.");
+        } catch (Exception e) {
+            System.out.println("Transfer failed: " + e.getMessage());
+        }
+
+        System.out.println("After transfer:");
+        accountDao.findAll().forEach(System.out::println);
+
+        ctx.close();
+    }
+}
